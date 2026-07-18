@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pong Multiplayer</title>
+  <style>
+    body {
+      background: #111;
+      color: #eee;
+      font-family: sans-serif;
+      text-align: center;
+      margin-top: 50px;
+    }
+    canvas {
+      background: black;
+      border: 2px solid white;
+      margin-top: 20px;
+    }
+    .score {
+      font-size: 32px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Pong Multiplayer</h1>
+  <p id="status">Connecting...</p>
+
+  <div id="main-menu">
+    <button id="play-button">Play</button>
+  </div>
+
+  <div id="game-container" style="display:none;">
+    <div class="score">
+      <span id="player-score">0</span> - <span id="computer-score">0</span>
+    </div>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+  </div>
+
+  <div id="win-screen" style="display:none;">
+    <h2 id="win-message"></h2>
+    <button id="restart-button">Play Again</button>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/client.js"></script>
+</body>
+</html>
