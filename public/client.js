@@ -31,7 +31,8 @@ playButton.addEventListener('click', () => {
 
 rematchButton.addEventListener('click', () => {
   socket.emit('requestRematch');
-  statusEl.textContent = 'Waiting for opponent to accept rematch...';
+  rematchButton.textContent = 'REQUESTED';
+  rematchButton.disabled = true;
 });
 
 menuButton.addEventListener('click', () => {
@@ -187,13 +188,15 @@ socket.on('gameOver', ({ winner }) => {
   gameContainerEl.style.display = 'none';
   winScreenEl.style.display = 'flex';
   winMessageEl.textContent = (winner === playerNumber) ? 'You Win!' : 'You Lose!';
+  rematchButton.textContent = 'Rematch';
+  rematchButton.disabled = false;
 });
 
 socket.on('opponentLeft', () => {
   winScreenEl.style.display = 'none';
   gameContainerEl.style.display = 'none';
   menuEl.style.display = 'flex';
-  statusEl.textContent = 'Opponent left. Returning to menu.';
+  statusEl.textContent = 'Opponent left. Returned to menu.';
 });
 
 socket.on('waitingForRematch', () => {

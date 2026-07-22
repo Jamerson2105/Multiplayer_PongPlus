@@ -14,7 +14,7 @@ const games = {};
 const availableRooms = [];
 
 //game state
-const WIN_SCORE = 10;
+const WIN_SCORE = 1;
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 400;
 const PADDLE_HEIGHT = 80;

@@ -81,6 +81,14 @@ body {
   margin-bottom: 30px;
 }
 
+.pixel-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+  color: #666;
+  border-color: #666;
+}
+
 .pixel-button:hover {
   transform: scale(1.05);
   box-shadow: 0 0 20px #0ff, inset 0 0 15px rgba(0, 255, 255, 0.4);
