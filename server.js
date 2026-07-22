@@ -26,17 +26,47 @@ const PADDLE_EDGE_DIST = 20;
 const BALL_SIZE = 10;
 const BALL_SPEED = 5;
 
+//superpower properties
+const POWERUP_SIZE = 20;
+const POWERUP_SPAWN_INTERVAL = 300; // around 5 seconds at 60fps
+const POWERUP_LIFETIME = 900; //despawns around 15 seconds
+const POWERUP_MAX_COUNT = 3; //max of 3 powerups in the canvas
+const POWERUP_TYPES = ['multiBall', 'bigPaddle', 'fastBall', 'slowBall'];
+const MULTIBALL_EXTRA_COUNT = 2;// number of ball multiBall adds;
+const BIG_PADDLE_HEIGHT = 160;       
+const FAST_BALL_MULTIPLIER = 1.8;    
+const SLOW_BALL_MULTIPLIER = 0.5;   
+const POWERUP_EFFECT_DURATION = 300;
+const POWERUP_LABEL_FONT_SIZE = 8;
 
 function createGameState(){
     return{
-        ball:{x: GAME_WIDTH /2, y: GAME_HEIGHT/2, dx: BALL_SPEED, dy: BALL_SPEED},
-        paddle1: { x: PADDLE_EDGE_DIST, y: GAME_HEIGHT / 2 - PADDLE_HEIGHT / 2 },
-        paddle2: { x: GAME_WIDTH - PADDLE_EDGE_DIST, y: GAME_HEIGHT / 2 - PADDLE_HEIGHT / 2 },
+        balls: [{ x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2, dx: BALL_SPEED, dy: BALL_SPEED ,lastHitBy: null}],
+        paddle1: { x: PADDLE_EDGE_DIST, y: GAME_HEIGHT / 2 - PADDLE_HEIGHT / 2, height: PADDLE_HEIGHT, bigTimer: 0 },
+        paddle2: { x: GAME_WIDTH - PADDLE_EDGE_DIST, y: GAME_HEIGHT / 2 - PADDLE_HEIGHT / 2, height: PADDLE_HEIGHT, bigTimer: 0 },
         score1: 0,
-        score2: 0
+        score2: 0,
+        powerUps: [],
+        powerUpTimer: POWERUP_SPAWN_INTERVAL,
+        ballSpeedEffect: { type: null, timer: 0 } //fast slow or null
     }
 }
 
+function applySpeedMultiplier(game, multiplier) {//increase/decrease ball speed function
+  game.balls.forEach(ball => {
+    const dxSign = ball.dx < 0 ? -1 : 1;
+    const dySign = ball.dy < 0 ? -1 : 1;
+    ball.dx = dxSign * BALL_SPEED * multiplier;
+    ball.dy = dySign * BALL_SPEED * multiplier;
+  });
+}
+
+function startMatch(socketA, socketB, roomId){
+  games[roomId] = createGameState();
+  socketA.emit('startGame', {roomId, playerNumber: socketA.playerNumber}); 
+  socketB.emit('startGame', { roomId, playerNumber: socketB.playerNumber });
+
+}
 
 io.on('connection', (socket) => {
 
@@ -74,6 +104,8 @@ io.on('connection', (socket) => {
     socket.roomId = roomId;
     waitingPlayer.playerNumber = 1;
     socket.playerNumber = 2;
+    waitingPlayer.opponentSocket = socket;
+    socket.opponentSocket = waitingPlayer;
 
     console.log(`Paired ${waitingPlayer.id} (P1) and ${socket.id} (P2) into ${roomId}`);
 
@@ -120,6 +152,40 @@ io.on('connection', (socket) => {
     }
 });
 
+  socket.on('requestRematch', ()=> {//request
+    const opponent = socket.opponentSocket;
+    if(!opponent || !opponent.connected){
+      socket.emit('opponentLeft');
+      return;
+    }
+
+    socket.rematchReady = true;
+    if (opponent.rematchReady){//if opponent accepts rematch
+      socket.rematchReady = false;
+      opponent.rematchReady = false;
+      startMatch(socket, opponent, socket.roomId);
+
+    }else{
+      socket.emit('waitingForRematch');
+    }
+  });
+
+  socket.on('leaveToMenu', () => {
+    const opponent = socket.opponentSocket;
+    if (opponent && opponent.connected) {
+      opponent.emit('opponentLeft');
+      opponent.opponentSocket = null;
+      opponent.rematchReady = false;
+    }
+    if (socket.roomId) {
+      availableRooms.push(socket.roomId); // room is now truly free to reuse
+    }
+    socket.opponentSocket = null;
+    socket.rematchReady = false;
+    socket.roomId = null;
+  });
+
+
 });
 
 const PORT = process.env.PORT || 3000;
@@ -133,75 +199,160 @@ for(const roomId in games){
     //move paddles;
     game.paddle1.y += game.paddle1.dy || 0;
     game.paddle2.y += game.paddle2.dy || 0;
-    game.paddle1.y = Math.max(0, Math.min(GAME_HEIGHT - PADDLE_HEIGHT, game.paddle1.y));
-    game.paddle2.y = Math.max(0, Math.min(GAME_HEIGHT - PADDLE_HEIGHT, game.paddle2.y));
+    game.paddle1.y = Math.max(0, Math.min(GAME_HEIGHT - game.paddle1.height, game.paddle1.y));
+    game.paddle2.y = Math.max(0, Math.min(GAME_HEIGHT - game.paddle2.height, game.paddle2.y));
 
+
+    //big paddle superpower timer
+    if (game.paddle1.bigTimer > 0) {
+      game.paddle1.bigTimer--;
+      if (game.paddle1.bigTimer <= 0) game.paddle1.height = PADDLE_HEIGHT;
+    }
+    if (game.paddle2.bigTimer > 0) {
+      game.paddle2.bigTimer--;
+      if (game.paddle2.bigTimer <= 0) game.paddle2.height = PADDLE_HEIGHT;
+    }
+
+      // Ball speed effect timer — revert to normal speed when expired
+    if (game.ballSpeedEffect.timer > 0) {
+      game.ballSpeedEffect.timer--;
+      if (game.ballSpeedEffect.timer <= 0) {
+        game.ballSpeedEffect.type = null;
+        applySpeedMultiplier(game, 1);
+        }
+        }
+    
+    //Power-ups
+    game.powerUpTimer--;
+    if (game.powerUpTimer <= 0) {
+      if (game.powerUps.length < POWERUP_MAX_COUNT) {
+        const type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+        game.powerUps.push({
+          x: GAME_WIDTH / 2 - 150 + Math.random() * 300,
+          y: Math.random() * (GAME_HEIGHT - POWERUP_SIZE - POWERUP_LABEL_FONT_SIZE * 2),
+          type: type,
+          age: 0
+        });
+        console.log('SPAWNED:', type);
+      }
+      game.powerUpTimer = POWERUP_SPAWN_INTERVAL; // resets on a fixed 5s cadence either way
+    }
+
+    // Age up + despawn expired power-ups
+    for (let i = game.powerUps.length - 1; i >= 0; i--) {
+      game.powerUps[i].age++;
+      if (game.powerUps[i].age >= POWERUP_LIFETIME) {
+        game.powerUps.splice(i, 1);
+      }
+    }
     //Move ball
-    game.ball.x += game.ball.dx;
-    game.ball.y += game.ball.dy;
+    for (let i = game.balls.length - 1; i >= 0; i--) {
+      const ball = game.balls[i];
 
-    //bounce off top/bottom walls
-    if (game.ball.y <= 0 || game.ball.y >= GAME_HEIGHT) {
-      game.ball.dy *= -1;
-    }
+      ball.x += ball.dx;
+      ball.y += ball.dy;
 
-    //bounce off paddle 1/left padle
-    if(
-        game.ball.x <= game.paddle1.x + PADDLE_WIDTH &&
-        game.ball.y >= game.paddle1.y &&
-        game.ball.y <= game.paddle1.y + PADDLE_HEIGHT
-     ){
-        game.ball.dx *= -1;
-     }
+      // bounce off top/bottom walls
+      if (ball.y <= 0 || ball.y >= GAME_HEIGHT) {
+        ball.dy *= -1;
+      }
 
-     //bounce of right paddle/paddle 2
-    if (
-      game.ball.x >= game.paddle2.x &&
-      game.ball.y >= game.paddle2.y &&
-      game.ball.y <= game.paddle2.y + PADDLE_HEIGHT
-    ) {
-      game.ball.dx *= -1;
-    }
-    // bounce off paddle 1 (left paddle) — only if ball is moving left
-    if(
-        game.ball.dx < 0 &&
-        game.ball.x <= game.paddle1.x + PADDLE_WIDTH &&
-        game.ball.x >= game.paddle1.x &&
-        game.ball.y >= game.paddle1.y &&
-        game.ball.y <= game.paddle1.y + PADDLE_HEIGHT
-     ){
-        game.ball.dx *= -1;
-        game.ball.x = game.paddle1.x + PADDLE_WIDTH; // push ball just outside paddle
-     }
+        // bounce off paddle 1 (left) — only if moving left
+      if (
+        ball.dx < 0 &&
+        ball.x <= game.paddle1.x + PADDLE_WIDTH &&
+        ball.x >= game.paddle1.x &&
+        ball.y >= game.paddle1.y &&
+        ball.y <= game.paddle1.y + game.paddle1.height
+      ) {
+        ball.dx *= -1;
+        ball.x = game.paddle1.x + PADDLE_WIDTH;
+        ball.lastHitBy = 1;
+      }
 
-     // bounce off paddle 2 (right paddle) — only if ball is moving right
-    if (
-      game.ball.dx > 0 &&
-      game.ball.x >= game.paddle2.x &&
-      game.ball.x <= game.paddle2.x + PADDLE_WIDTH &&
-      game.ball.y >= game.paddle2.y &&
-      game.ball.y <= game.paddle2.y + PADDLE_HEIGHT
-    ) {
-      game.ball.dx *= -1;
-      game.ball.x = game.paddle2.x; // push ball just outside paddle
+      // bounce off paddle 2 (right) — only if moving right
+      if (
+        ball.dx > 0 &&
+        ball.x >= game.paddle2.x &&
+        ball.x <= game.paddle2.x + PADDLE_WIDTH &&
+        ball.y >= game.paddle2.y &&
+        ball.y <= game.paddle2.y + game.paddle2.height
+      ) {
+        ball.dx *= -1;
+        ball.x = game.paddle2.x;
+        ball.lastHitBy = 2;
+      }
+
+      // power-up pickup (box overlap check)
+      for (let p = game.powerUps.length - 1; p >= 0; p--) {
+        const powerUp = game.powerUps[p];
+        const hit =
+          ball.x + BALL_SIZE / 2 >= powerUp.x &&
+          ball.x - BALL_SIZE / 2 <= powerUp.x + POWERUP_SIZE &&
+          ball.y + BALL_SIZE / 2 >= powerUp.y &&
+          ball.y - BALL_SIZE / 2 <= powerUp.y + POWERUP_SIZE;
+
+        if (hit) {
+          const collectingPlayer = ball.lastHitBy || 1;
+
+          if (powerUp.type === 'multiBall') {
+            for (let n = 0; n < MULTIBALL_EXTRA_COUNT; n++) {
+              const dxSign = Math.random() < 0.5 ? -1 : 1;
+              const dySign = Math.random() < 0.5 ? -1 : 1;
+              game.balls.push({
+                x: GAME_WIDTH / 2,
+                y: GAME_HEIGHT / 2,
+                dx: dxSign * BALL_SPEED,
+                dy: dySign * BALL_SPEED,
+                lastHitBy: collectingPlayer
+              });
+            }
+          } else if (powerUp.type === 'bigPaddle') {
+            const paddle = collectingPlayer === 1 ? game.paddle1 : game.paddle2;
+            paddle.height = BIG_PADDLE_HEIGHT;
+            paddle.bigTimer = POWERUP_EFFECT_DURATION;
+          } else if (powerUp.type === 'fastBall') {
+            game.ballSpeedEffect = { type: 'fast', timer: POWERUP_EFFECT_DURATION };
+            applySpeedMultiplier(game, FAST_BALL_MULTIPLIER);
+          } else if (powerUp.type === 'slowBall') {
+            game.ballSpeedEffect = { type: 'slow', timer: POWERUP_EFFECT_DURATION };
+            applySpeedMultiplier(game, SLOW_BALL_MULTIPLIER);
+          }
+
+          game.powerUps.splice(p, 1); // remove just this one power-up
+        }
+      }
+      // scoring
+      if (ball.x < 0) {
+        game.score2++;
+        io.to(roomId).emit('ballScored'); 
+        if (game.balls.length > 1) {
+          game.balls.splice(i, 1); // extra ball — just remove it
+        } else {
+          ball.x = GAME_WIDTH / 2; ball.y = GAME_HEIGHT / 2;
+          ball.dx = BALL_SPEED; ball.dy = BALL_SPEED;
+        }
+      } else if (ball.x > GAME_WIDTH) {
+        game.score1++;
+        io.to(roomId).emit('ballScored');
+        if (game.balls.length > 1) {
+          game.balls.splice(i, 1);
+        } else {
+          ball.x = GAME_WIDTH / 2; ball.y = GAME_HEIGHT / 2;
+          ball.dx = -BALL_SPEED; ball.dy = BALL_SPEED;
+        }
+      }
     }
     
-    //scoring
-    if (game.ball.x < 0) {
-      game.score2++;
-      game.ball = { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2, dx: BALL_SPEED, dy: BALL_SPEED };
-    } else if (game.ball.x > GAME_WIDTH) {
-      game.score1++;
-      game.ball = { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2, dx: -BALL_SPEED, dy: BALL_SPEED };
-    }
-
+    
     if (game.score1 >= WIN_SCORE || game.score2 >= WIN_SCORE) {
       const winner = game.score1 >= WIN_SCORE ? 1 : 2;
       io.to(roomId).emit('gameOver', { winner });
       delete games[roomId]; // stop updating this room
-      availableRooms.push(roomId);
       continue; // skip the gameState emit below for this now-deleted room
     }
+
+    
 
     io.to(roomId).emit('gameState', game);
   }

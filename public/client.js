@@ -12,7 +12,15 @@ const gameContainerEl = document.getElementById('game-container');
 const winScreenEl = document.getElementById('win-screen');
 const winMessageEl = document.getElementById('win-message');
 const playButton = document.getElementById('play-button');
-const restartButton = document.getElementById('restart-button');
+const rematchButton = document.getElementById('rematch-button');
+const menuButton = document.getElementById('menu-button');
+
+const POWERUP_LABELS = {
+  multiBall: 'MULTIBALL',
+  bigPaddle: 'BIG PADDLE',
+  fastBall: 'FAST',
+  slowBall: 'SLOW'
+};
 
 playButton.addEventListener('click', () => {
   menuEl.style.display = 'none';
@@ -21,13 +29,17 @@ playButton.addEventListener('click', () => {
   statusEl.textContent = `ID = ${socket.id}, Connecting with another player...`;
 });
 
-restartButton.addEventListener('click', () => {
+rematchButton.addEventListener('click', () => {
+  socket.emit('requestRematch');
+  statusEl.textContent = 'Waiting for opponent to accept rematch...';
+});
+
+menuButton.addEventListener('click', () => {
+  socket.emit('leaveToMenu');
   winScreenEl.style.display = 'none';
-  gameContainerEl.style.display = 'block';
-document.getElementById('player-score').textContent = '0';   // reset display scores
-  document.getElementById('computer-score').textContent = '0';
-  statusEl.textContent = 'Waiting for an opponent...';
-  socket.emit('findMatch');
+  gameContainerEl.style.display = 'none';
+  menuEl.style.display = 'flex';
+  statusEl.textContent = 'Connected!';
 });
 
 //game properties
@@ -40,25 +52,97 @@ const PADDLE_EDGE_DIST = 20;
 const BALL_SIZE = 10;
 const BALL_SPEED = 5;
 
+//powerup properties
+const POWERUP_SIZE = 20;
+const BIG_PADDLE_HEIGHT = 160;       // ADD THIS
+const FAST_BALL_MULTIPLIER = 1.8;    // ADD THIS
+const SLOW_BALL_MULTIPLIER = 0.5; 
+const POWERUP_LABEL_FONT_SIZE = 8;
+
+
 //connect fires on the client when it successfully connects to server
 
 function drawGame(game){
-
     ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-    // Draw paddle 1 (left side)
     ctx.fillStyle = 'white';
+    ctx.fillRect(PADDLE_EDGE_DIST, game.paddle1.y, PADDLE_WIDTH, game.paddle1.height);
+    ctx.fillRect(GAME_WIDTH - PADDLE_EDGE_DIST, game.paddle2.y, PADDLE_WIDTH, game.paddle2.height);
+    game.balls.forEach(ball => {
+      ctx.fillRect(ball.x - BALL_SIZE / 2, ball.y - BALL_SIZE / 2, BALL_SIZE, BALL_SIZE);
+    });
 
-    ctx.fillRect(PADDLE_EDGE_DIST, game.paddle1.y, PADDLE_WIDTH, PADDLE_HEIGHT);
-
-  // Draw paddle 2 (right side)
-    ctx.fillRect(GAME_WIDTH - PADDLE_EDGE_DIST, game.paddle2.y, PADDLE_WIDTH, PADDLE_HEIGHT);
-
-    ctx.fillRect(game.ball.x - BALL_SIZE / 2, game.ball.y - BALL_SIZE / 2, BALL_SIZE, BALL_SIZE);
+    game.powerUps.forEach(powerUp => drawPowerUp(powerUp)); // drawn last, so its color can't leak onto anything else
 
     document.getElementById('player-score').textContent = game.score1;
     document.getElementById('computer-score').textContent = game.score2;
+}
+
+function drawPowerUp(powerUp){
+  if(!powerUp) return;
+
+  console.log('drawPowerUp is running, drawing:', powerUp.type, 'at', powerUp.x, powerUp.y); // ADD THIS
+
+  const cx = powerUp.x + POWERUP_SIZE / 2;//center of the powerup values
+  const cy = powerUp.y + POWERUP_SIZE / 2;
+
+  ctx.fillStyle =
+    powerUp.type === 'multiBall' ? 'cyan' :
+    powerUp.type === 'bigPaddle' ? 'lime' :
+    powerUp.type === 'fastBall'  ? 'red' :
+    'blue'; // slowBall
+
+  if (powerUp.type === 'multiBall') {
+    // circle
+    ctx.beginPath();
+    ctx.arc(cx, cy, POWERUP_SIZE / 2, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (powerUp.type === 'bigPaddle') {
+    // square
+    ctx.fillRect(powerUp.x, powerUp.y, POWERUP_SIZE, POWERUP_SIZE);
+  } else if (powerUp.type === 'fastBall') {
+    // triangle pointing up
+    ctx.beginPath();
+    ctx.moveTo(cx, powerUp.y);
+    ctx.lineTo(powerUp.x, powerUp.y + POWERUP_SIZE);
+    ctx.lineTo(powerUp.x + POWERUP_SIZE, powerUp.y + POWERUP_SIZE);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    // slowBall — triangle pointing down
+    ctx.beginPath();
+    ctx.moveTo(cx, powerUp.y + POWERUP_SIZE);
+    ctx.lineTo(powerUp.x, powerUp.y);
+    ctx.lineTo(powerUp.x + POWERUP_SIZE, powerUp.y);
+    ctx.closePath();
+    ctx.fill();
+  }
+  //draw labels under the shapes
+  ctx.font = `${POWERUP_LABEL_FONT_SIZE}px 'Press Start 2P', monospace`;
+  ctx.fillStyle = 'white';
+  ctx.textAlign = 'center';
+  ctx.fillText(POWERUP_LABELS[powerUp.type], cx, powerUp.y + POWERUP_SIZE + 12);
+}
+
+function shakeScreen(duration = 300, magnitude = 8) {
+  const startTime = performance.now();
+
+  function animate(time) {
+    const elapsed = time - startTime;
+    if (elapsed < duration) {
+      const progress = elapsed / duration;
+      const currentMagnitude = magnitude * (1 - progress); // shake fades out over time
+      const dx = (Math.random() * 2 - 1) * currentMagnitude;
+      const dy = (Math.random() * 2 - 1) * currentMagnitude;
+      canvas.style.transform = `translate(${dx}px, ${dy}px)`;
+      requestAnimationFrame(animate);
+    } else {
+      canvas.style.transform = 'translate(0px, 0px)'; // snap back to normal
+    }
+  }
+
+  requestAnimationFrame(animate);
 }
 
 socket.on('connect', ()=> {
@@ -75,7 +159,13 @@ statusEl.textContent = 'Disconnected.';
 socket.on('startGame', ({roomId, playerNumber:num}) => {
     currentRoomId = roomId;
     playerNumber = num;
-    statusEl.textContent = `You are Player ${playerNumber}`;
+    document.getElementById('player-label').textContent = `You are Player ${playerNumber}`;
+    winScreenEl.style.display = 'none';
+    menuEl.style.display = 'none';
+    statusEl.textContent = `ID =  ${socket.id}`;
+    gameContainerEl.style.display = 'block';
+    document.getElementById('player-score').textContent = '0';
+    document.getElementById('computer-score').textContent = '0';
 });
 
 socket.on('gameState', (game) => {
@@ -95,6 +185,21 @@ document.addEventListener('keyup', (e) => {
 
 socket.on('gameOver', ({ winner }) => {
   gameContainerEl.style.display = 'none';
-  winScreenEl.style.display = 'block';
+  winScreenEl.style.display = 'flex';
   winMessageEl.textContent = (winner === playerNumber) ? 'You Win!' : 'You Lose!';
+});
+
+socket.on('opponentLeft', () => {
+  winScreenEl.style.display = 'none';
+  gameContainerEl.style.display = 'none';
+  menuEl.style.display = 'flex';
+  statusEl.textContent = 'Opponent left. Returning to menu.';
+});
+
+socket.on('waitingForRematch', () => {
+  statusEl.textContent = 'Waiting for opponent to accept rematch...';
+});
+
+socket.on('ballScored', () => {//shake screen everytime someone scores
+  shakeScreen();
 });

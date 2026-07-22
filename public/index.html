@@ -3,34 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <title>Pong Multiplayer</title>
-  <style>
-    body {
-      background: #111;
-      color: #eee;
-      font-family: sans-serif;
-      text-align: center;
-      margin-top: 50px;
-    }
-    canvas {
-      background: black;
-      border: 2px solid white;
-      margin-top: 20px;
-    }
-    .score {
-      font-size: 32px;
-      margin-top: 10px;
-    }
-  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <h1>Pong Multiplayer</h1>
-  <p id="status">Connecting...</p>
+  
 
   <div id="main-menu">
-    <button id="play-button">Play</button>
+    <h1 class="game-title">PONG</h1>
+    <button id="play-button" class="pixel-button">PLAY</button>
   </div>
 
+  <p id="status">Connecting...</p>
+
   <div id="game-container" style="display:none;">
+    <p id="player-label" class="pixel-heading"></p>
     <div class="score">
       <span id="player-score">0</span> - <span id="computer-score">0</span>
     </div>
@@ -38,9 +25,12 @@
   </div>
 
   <div id="win-screen" style="display:none;">
-    <h2 id="win-message"></h2>
-    <button id="restart-button">Play Again</button>
-  </div>
+    <h2 id="win-message" class="pixel-heading"></h2>
+    <div class="win-buttons">
+    <button id="rematch-button" class="pixel-button">REMATCH</button>
+    <button id="menu-button" class="pixel-button">MAIN MENU</button>
+    </div>
+</div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/client.js"></script>
