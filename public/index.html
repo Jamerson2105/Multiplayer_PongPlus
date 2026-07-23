@@ -9,10 +9,35 @@
 <body>
   
 
+
+
   <div id="main-menu">
-    <h1 class="game-title">PONG+</h1>
-    <button id="play-button" class="pixel-button">PLAY</button>
+  <h1 class="game-title">PONG</h1>
+  <button id="play-button" class="pixel-button">PLAY RANDOM</button>
+  <button id="play-friend-button" class="pixel-button">PLAY VS FRIEND</button>
+</div>
+
+<div id="private-menu" style="display:none;">
+  <h2 class="pixel-heading">PLAY VS FRIEND</h2>
+
+  <div id="private-choice">
+    <button id="create-room-button" class="pixel-button">CREATE ROOM</button>
+    <button id="join-room-button" class="pixel-button">JOIN ROOM</button>
   </div>
+
+  <div id="create-room-panel" style="display:none;">
+    <p id="room-code-display" class="pixel-heading"></p>
+    <p id="private-status" class="pixel-small"></p>
+  </div>
+
+  <div id="join-room-panel" style="display:none;">
+    <input id="room-code-input" class="pixel-input" maxlength="5" placeholder="CODE">
+    <button id="submit-code-button" class="pixel-button">JOIN</button>
+    <p id="private-error" class="pixel-small" style="color:#f55;"></p>
+  </div>
+
+  <button id="private-back-button" class="pixel-button">BACK</button>
+</div>
 
   <p id="status">Connecting...</p>
 

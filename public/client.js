@@ -6,7 +6,7 @@ let currentRoomId = null;
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-//ui elems
+//main ui elems
 const menuEl = document.getElementById('main-menu');
 const gameContainerEl = document.getElementById('game-container');
 const winScreenEl = document.getElementById('win-screen');
@@ -15,6 +15,21 @@ const playButton = document.getElementById('play-button');
 const rematchButton = document.getElementById('rematch-button');
 const menuButton = document.getElementById('menu-button');
 
+//play against friend ui elems
+const playFriendButton = document.getElementById('play-friend-button');
+const privateMenuEl = document.getElementById('private-menu');
+const privateChoiceEl = document.getElementById('private-choice');
+const createRoomButton = document.getElementById('create-room-button');
+const joinRoomButton = document.getElementById('join-room-button');
+const createRoomPanel = document.getElementById('create-room-panel');
+const joinRoomPanel = document.getElementById('join-room-panel');
+const roomCodeDisplay = document.getElementById('room-code-display');
+const privateStatus = document.getElementById('private-status');
+const roomCodeInput = document.getElementById('room-code-input');
+const submitCodeButton = document.getElementById('submit-code-button');
+const privateError = document.getElementById('private-error');
+const privateBackButton = document.getElementById('private-back-button');
+
 const POWERUP_LABELS = {
   multiBall: 'MULTIBALL',
   bigPaddle: 'BIG PADDLE',
@@ -22,10 +37,12 @@ const POWERUP_LABELS = {
   slowBall: 'SLOW'
 };
 
+//ui logic
 playButton.addEventListener('click', () => {
   menuEl.style.display = 'none';
   gameContainerEl.style.display = 'block';
   socket.emit('findMatch');
+  ctx.clearRect(0,0,GAME_WIDTH,GAME_HEIGHT);
   statusEl.textContent = `ID = ${socket.id}, Connecting with another player...`;
 });
 
@@ -41,6 +58,38 @@ menuButton.addEventListener('click', () => {
   gameContainerEl.style.display = 'none';
   menuEl.style.display = 'flex';
   statusEl.textContent = 'Connected!';
+});
+
+playFriendButton.addEventListener('click', () => {
+  menuEl.style.display = 'none';
+  privateMenuEl.style.display = 'flex';
+});
+
+privateBackButton.addEventListener('click', () => {
+  privateMenuEl.style.display = 'none';
+  privateChoiceEl.style.display = 'flex';
+  createRoomPanel.style.display = 'none';
+  joinRoomPanel.style.display = 'none';
+  privateError.textContent = '';
+  menuEl.style.display = 'flex';
+});
+
+createRoomButton.addEventListener('click', () => {
+  privateChoiceEl.style.display = 'none';
+  createRoomPanel.style.display = 'block';
+  socket.emit('createPrivateRoom');
+});
+
+joinRoomButton.addEventListener('click', () => {
+  privateChoiceEl.style.display = 'none';
+  joinRoomPanel.style.display = 'flex';
+});
+
+submitCodeButton.addEventListener('click', () => {
+  const code = roomCodeInput.value.trim().toUpperCase();
+  if (code.length === 0) return;
+  privateError.textContent = '';
+  socket.emit('joinPrivateRoom', code);
 });
 
 //game properties
@@ -164,6 +213,7 @@ socket.on('startGame', ({roomId, playerNumber:num}) => {
     winScreenEl.style.display = 'none';
     menuEl.style.display = 'none';
     statusEl.textContent = `ID =  ${socket.id}`;
+    privateMenuEl.style.display = 'none';
     gameContainerEl.style.display = 'block';
     document.getElementById('player-score').textContent = '0';
     document.getElementById('computer-score').textContent = '0';
@@ -205,4 +255,15 @@ socket.on('waitingForRematch', () => {
 
 socket.on('ballScored', () => {//shake screen everytime someone scores
   shakeScreen();
+});
+
+//private room logic
+
+socket.on('privateRoomCreated', ({ code }) => {
+  roomCodeDisplay.textContent = code;
+  privateStatus.textContent = 'Share this code — waiting for opponent...';
+});
+
+socket.on('privateRoomError', (message) => {
+  privateError.textContent = message;
 });

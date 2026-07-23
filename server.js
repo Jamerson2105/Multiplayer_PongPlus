@@ -12,6 +12,7 @@ let waitingPlayer = null; //holds one socket at a time, whoever is waiting for a
 let roomCounter = 0;//generate unique room names(room_1 ,room_2, etc)
 const games = {};
 const availableRooms = [];
+const privateRooms = [];
 
 //game state
 const WIN_SCORE = 1;
@@ -50,6 +51,19 @@ function createGameState(){
         powerUpTimer: POWERUP_SPAWN_INTERVAL,
         ballSpeedEffect: { type: null, timer: 0 } //fast slow or null
     }
+}
+
+function generateRoomCode(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no O/0/I/1 — avoids visual mixups
+  let code;
+  do {
+    code = '';
+    for(let i = 0; i< 5; i++){
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+  } while (privateRooms[code]); // regenerate if this code is already in use
+  return code;
+
 }
 
 function applySpeedMultiplier(game, multiplier) {//increase/decrease ball speed function
@@ -136,6 +150,64 @@ io.on('connection', (socket) => {
         else paddle.dy = 0;
     })
 
+    socket.on('createPrivateRoom', () => {
+      const code = generateRoomCode();
+      privateRooms[code] = {hostSocket: socket};
+      socket.privateCode = code; // remember it on the socket for cleanup
+      socket.emit('privateRoomCreated', { code });
+      console.log(`${socket.id} created private room ${code}`);
+    });
+
+    socket.on('joinPrivateRoom', (code) => {
+      const room = privateRooms[code];
+
+      //error handling
+      if(!room){
+        socket.emit('privateRoomError', 'Room not found');
+        return;
+      }
+
+      const host = room.hostSocket;
+
+      if(!host.connected){
+        socket.emit('privateRoomError', 'Host is no longer conencted.')
+      }
+
+      if (host === socket) {
+      socket.emit('privateRoomError', "You can't join your own room.");
+      return;
+      }
+
+      //valid rooms
+      let roomId;
+      if(availableRooms.length > 0){
+        roomId = availableRooms.pop();
+      } else{
+        roomCounter++;
+        roomId = `room-${roomCounter}`;
+      }
+
+      host.join(roomId);
+      socket.join(roomId);
+
+      host.roomId = roomId;
+      socket.roomId = roomId;
+      host.playerNumber =1;
+      socket.playerNumber = 2;
+      host.opponentSocket = socket;
+      socket.opponentSocket = host;
+
+      games[roomId] = createGameState();
+      host.emit('startGame', { roomId, playerNumber: 1 });
+      socket.emit('startGame', { roomId, playerNumber: 2 });
+
+      console.log(`Private match: ${host.id} (P1) vs ${socket.id} (P2) in ${roomId}`);
+
+      delete privateRooms[code]; // code is used up, one-time use
+      host.privateCode = null;
+
+    });
+
     socket.on('disconnect', () =>{
         console.log('a user disconnected:', socket.id);
     
@@ -146,9 +218,13 @@ io.on('connection', (socket) => {
     }
 
     if(socket.roomId){
-        socket.to(socket.roomId).emit('opponentLeft')
+        socket.to(socket.roomId).emit('opponentLeft');
         delete games[socket.roomId];
         availableRooms.push(socket.roomId);
+    }
+
+    if(socket.privateCode){
+      delete privateRooms[socket.privateCode];
     }
 });
 
